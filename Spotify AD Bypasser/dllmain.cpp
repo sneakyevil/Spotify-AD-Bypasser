@@ -29,6 +29,12 @@ namespace Program
         keybd_event(VK_MEDIA_PLAY_PAUSE, 0, KEYEVENTF_KEYUP, 0);
     }
 
+    void MediaNext()
+    {
+        keybd_event(VK_MEDIA_NEXT_TRACK, 0, 1, 0);
+        keybd_event(VK_MEDIA_NEXT_TRACK, 0, KEYEVENTF_KEYUP, 0);
+    }
+
     void RestartSpotify()
     {
         // Start New Process
@@ -98,9 +104,12 @@ namespace HookFuncs
         return m_oShell_NotifyIconW(m_dMessage, m_pData);
     }
 
+    HWND m_hOldForeground = 0;
+
     typedef BOOL(__stdcall* m_tSetForegroundWindow)(HWND); m_tSetForegroundWindow m_oSetForegroundWindow;
     BOOL __stdcall SetForegroundWindow_(HWND m_hWindow)
     {
+        m_hOldForeground = GetForegroundWindow();
         Globals::m_hWindow = m_hWindow;
 
         if (!Program::m_bWasManuallyStarted)
@@ -114,13 +123,14 @@ namespace HookFuncs
     {
         if (wcscmp(m_pWideString, L"Advertisement") == 0)
         {
-            if (Program::m_bDisableNextWindowNameCheck)
-                Program::m_bDisableNextWindowNameCheck = false;
-            else
+            if (!Program::m_bDisableNextWindowNameCheck)
                 CreateThread(0, 0, Program::AdvertisementRestart, m_pNotifyIconData, 0, 0);
         }
         else if (!wcsstr(m_pWideString, L"-"))
             m_pWideString = L"Spotify & sneakyevil's AD Bypass";
+
+        if (Program::m_bDisableNextWindowNameCheck)
+            Program::m_bDisableNextWindowNameCheck = false;
 
         return m_oSetWindowTextW(m_hWindow, m_pWideString);
     }
@@ -166,8 +176,12 @@ DWORD __stdcall MainThread(void* m_pReserved)
         Sleep(500);
         if (Globals::m_hWindow)
         {
+            if (HookFuncs::m_hOldForeground) // Restore foreground so application that use "WindowsHook" it applies stuff back...
+                HookFuncs::m_oSetForegroundWindow(HookFuncs::m_hOldForeground);
+
             Program::m_bDisableNextWindowNameCheck = true;
             Program::MediaPlayPause();
+            Program::MediaNext();
             break;
         }
     }
@@ -188,7 +202,7 @@ int __stdcall DllMain(HMODULE m_hModule, DWORD m_dReason, void* m_pReserved)
         {
             Globals::m_dProcesssID = GetCurrentProcessId();
             Globals::m_hModule = m_hModule;
-            Globals::m_sProcessPath.resize(GetModuleFileNameA(0, &Globals::m_sProcessPath[0], Globals::m_sProcessPath.size()));
+            Globals::m_sProcessPath.resize(GetModuleFileNameA(0, &Globals::m_sProcessPath[0], static_cast<DWORD>(Globals::m_sProcessPath.size())));
 
             size_t m_sProcessPathLastDelimer = Globals::m_sProcessPath.find_last_of("\\/");
             if (m_sProcessPathLastDelimer != std::string::npos)
